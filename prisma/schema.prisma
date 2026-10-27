@@ -1,0 +1,122 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// A bus route: e.g. Dhaka -> Chittagong
+model Route {
+  id          String   @id @default(cuid())
+  name        String
+  origin      String
+  destination String
+  distanceKm  Float
+  estimatedMinutes Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  counters    Counter[]
+  trips       Trip[]
+}
+
+// Ordered stops / counters along a route
+model Counter {
+  id            String @id @default(cuid())
+  routeId       String
+  route         Route  @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  name          String
+  address       String?
+  lat           Float
+  lng           Float
+  sequence      Int
+  minutesFromStart Int
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([routeId])
+}
+
+// A physical bus
+model Bus {
+  id          String   @id @default(cuid())
+  name        String
+  plateNumber String   @unique
+  totalSeats  Int
+  type        String
+  driverName  String?
+  driverPhone String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  trips       Trip[]
+  locations   BusLocation[]
+}
+
+// A scheduled trip: a bus running a route at a given time
+model Trip {
+  id            String   @id @default(cuid())
+  busId         String
+  bus           Bus      @relation(fields: [busId], references: [id])
+  routeId       String
+  route         Route    @relation(fields: [routeId], references: [id])
+  departureTime DateTime
+  arrivalTime   DateTime
+  pricePerSeat  Float
+  status        String   @default("SCHEDULED") // SCHEDULED | BOARDING | DEPARTED | ARRIVED | CANCELLED
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  bookings      Booking[]
+  locations     BusLocation[]
+}
+
+// A user's booking (one or more seats)
+model Booking {
+  id             String   @id @default(cuid())
+  tripId         String
+  trip           Trip     @relation(fields: [tripId], references: [id])
+  passengerName  String
+  passengerEmail String
+  passengerPhone String
+  seatNumbers    String   // comma-separated e.g. "A1,A2"
+  boardingCounterId   String?
+  boardingCounterName String?
+  totalAmount    Float
+  paymentStatus  String   @default("PENDING") // PENDING | PAID | FAILED | REFUNDED
+  paymentMethod  String?
+  paymentRef     String?
+  status         String   @default("CONFIRMED") // CONFIRMED | CANCELLED
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([tripId])
+}
+
+// Real-time bus location; latest row per (bus, trip) is the current position
+model BusLocation {
+  id                 String   @id @default(cuid())
+  busId              String
+  bus                Bus      @relation(fields: [busId], references: [id])
+  tripId             String?
+  trip               Trip?    @relation(fields: [tripId], references: [id])
+  lat                Float
+  lng                Float
+  currentCounterId   String?
+  currentCounterName String?
+  nextCounterId      String?
+  nextCounterName    String?
+  speed              Float    @default(0)
+  heading            Float    @default(0)
+  status             String   @default("IDLE") // IDLE | MOVING | AT_COUNTER | ARRIVED
+  progressPct        Float    @default(0)
+  etaMinutes         Int      @default(0)
+  lastUpdated        DateTime @default(now())
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([busId])
+  @@index([tripId])
+}
