@@ -50,6 +50,9 @@ model Bus {
   type        String
   driverName  String?
   driverPhone String?
+  // GPS device token — used by /api/gps/push to authenticate hardware pushes.
+  // In production this would be a per-device secret; here it's a plain string the owner sets.
+  gpsDeviceToken String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   trips       Trip[]
@@ -89,9 +92,38 @@ model Booking {
   paymentMethod  String?
   paymentRef     String?
   status         String   @default("CONFIRMED") // CONFIRMED | CANCELLED
+  // Refund / cancellation tracking
+  cancelledAt    DateTime?
+  cancelReason   String?
+  refundAmount   Float?
+  refundRef      String?
+  refundedAt     DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+  notifications  Notification[]
 
+  @@index([tripId])
+}
+
+// Outbound notifications (SMS / email) sent for a booking.
+model Notification {
+  id          String   @id @default(cuid())
+  bookingId   String?
+  booking     Booking? @relation(fields: [bookingId], references: [id])
+  tripId      String?
+  channel     String   // SMS | EMAIL
+  type        String   // BOOKING_CONFIRMATION | DEPARTURE_REMINDER | DELAY_ALERT | REFUND_NOTICE
+  recipient   String   // phone (SMS) or email (EMAIL)
+  subject     String?
+  body        String
+  status      String   @default("PENDING") // PENDING | SENT | FAILED
+  providerRef String?
+  error       String?
+  sentAt      DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([bookingId])
   @@index([tripId])
 }
 

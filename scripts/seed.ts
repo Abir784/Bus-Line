@@ -10,6 +10,7 @@ async function main() {
   console.log('Seeding database...')
 
   // Clean up
+  await db.notification.deleteMany()
   await db.busLocation.deleteMany()
   await db.booking.deleteMany()
   await db.trip.deleteMany()
@@ -87,16 +88,16 @@ async function main() {
 
   // ===== Buses =====
   const bus1 = await db.bus.create({
-    data: { name: 'Green Line Paribahan — GL-01', plateNumber: 'DHA-11-1234', totalSeats: 36, type: 'AC Business', driverName: 'Karim Uddin', driverPhone: '+8801711000001' },
+    data: { name: 'Green Line Paribahan — GL-01', plateNumber: 'DHA-11-1234', totalSeats: 36, type: 'AC Business', driverName: 'Karim Uddin', driverPhone: '+8801711000001', gpsDeviceToken: 'gps_gl01_demo' },
   })
   const bus2 = await db.bus.create({
-    data: { name: 'Shohagh Paribahan — SP-02', plateNumber: 'DHA-11-2233', totalSeats: 40, type: 'AC Sleeper', driverName: 'Abdul Hamid', driverPhone: '+8801711000002' },
+    data: { name: 'Shohagh Paribahan — SP-02', plateNumber: 'DHA-11-2233', totalSeats: 40, type: 'AC Sleeper', driverName: 'Abdul Hamid', driverPhone: '+8801711000002', gpsDeviceToken: 'gps_sp02_demo' },
   })
   const bus3 = await db.bus.create({
-    data: { name: 'Hanif Enterprise — HE-03', plateNumber: 'DHA-11-3344', totalSeats: 32, type: 'Non-AC Chair', driverName: 'Jashim Uddin', driverPhone: '+8801711000003' },
+    data: { name: 'Hanif Enterprise — HE-03', plateNumber: 'DHA-11-3344', totalSeats: 32, type: 'Non-AC Chair', driverName: 'Jashim Uddin', driverPhone: '+8801711000003', gpsDeviceToken: 'gps_he03_demo' },
   })
   const bus4 = await db.bus.create({
-    data: { name: 'Saintmartin Transport — ST-04', plateNumber: 'DHA-11-4455', totalSeats: 36, type: 'AC Business', driverName: 'Rafiqul Islam', driverPhone: '+8801711000004' },
+    data: { name: 'Saintmartin Transport — ST-04', plateNumber: 'DHA-11-4455', totalSeats: 36, type: 'AC Business', driverName: 'Rafiqul Islam', driverPhone: '+8801711000004', gpsDeviceToken: 'gps_st04_demo' },
   })
 
   // ===== Trips (today + tomorrow) =====

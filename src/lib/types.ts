@@ -61,7 +61,29 @@ export interface Booking {
   paymentRef?: string | null
   status: string
   createdAt: string
+  // Refund / cancellation fields
+  cancelledAt?: string | null
+  cancelReason?: string | null
+  refundAmount?: number | null
+  refundRef?: string | null
+  refundedAt?: string | null
   trip?: Trip
+}
+
+export interface Notification {
+  id: string
+  bookingId?: string | null
+  tripId?: string | null
+  channel: 'SMS' | 'EMAIL'
+  type: string
+  recipient: string
+  subject?: string | null
+  body: string
+  status: 'PENDING' | 'SENT' | 'FAILED'
+  providerRef?: string | null
+  error?: string | null
+  sentAt?: string | null
+  createdAt: string
 }
 
 export interface BusLocation {

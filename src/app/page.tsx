@@ -39,6 +39,13 @@ import {
   Navigation,
   Flag,
   TrendingUp,
+  QrCode,
+  Bell,
+  Cpu,
+  Ban,
+  RotateCcw,
+  Send,
+  KeySquare,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -85,6 +92,7 @@ import {
   type Bus,
   type BusLocation,
   type Counter,
+  type Notification,
   type Route,
   type Trip,
   type TripWithTracking,
@@ -1075,7 +1083,16 @@ function CheckoutView({ bookingId, go }: { bookingId: string; go: (v: View) => v
 
     if (pay.success) {
       sessionStorage.removeItem('pending-booking')
-      toast({ title: 'Payment successful', description: 'Your tickets are confirmed.' })
+      const notifSummary = (pay.notifications as Array<{ channel: string; status: string }> | undefined)
+        ?.filter((n) => n.status === 'SENT')
+        .map((n) => n.channel)
+        .join(' + ')
+      toast({
+        title: 'Payment successful',
+        description: notifSummary
+          ? `Tickets confirmed. Confirmation sent via ${notifSummary}.`
+          : 'Your tickets are confirmed.',
+      })
       go({ name: 'confirmation', bookingId: booking.id })
     } else {
       toast({ title: 'Payment failed', description: 'Please try again or use a different method.', variant: 'destructive' })
@@ -1373,6 +1390,29 @@ function ConfirmationView({ bookingId, go }: { bookingId: string; go: (v: View) 
               <span className="text-xl font-bold text-primary">{formatBDT(booking.totalAmount)}</span>
             </div>
           </div>
+
+          {/* QR boarding pass */}
+          {booking.paymentStatus === 'PAID' && (
+            <div className="mt-5 rounded-xl border bg-card p-5 flex flex-col sm:flex-row items-center gap-4">
+              <img
+                src={`/api/bookings/${booking.id}/qrcode`}
+                alt="QR boarding pass"
+                className="w-32 h-32 rounded-lg border bg-white p-1 flex-shrink-0"
+              />
+              <div className="text-left text-sm space-y-1.5 flex-1">
+                <div className="font-semibold flex items-center gap-1.5 text-base">
+                  <QrCode className="h-4 w-4 text-primary" /> Boarding pass
+                </div>
+                <div className="text-muted-foreground">
+                  Show this QR code to the conductor at the boarding counter to scan and confirm your seat.
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Bell className="h-3 w-3 text-primary" />
+                  A confirmation SMS and email have been sent to {booking.passengerPhone} and {booking.passengerEmail}.
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-col sm:flex-row gap-2 justify-center mt-6">
             <Button onClick={() => booking.trip && go({ name: 'track', tripId: booking.trip.id })}>
@@ -1738,7 +1778,12 @@ function MyBookingsView({ go }: { go: (v: View) => void }) {
       ) : (
         <div className="space-y-3">
           {bookings.map((b) => (
-            <BookingRow key={b.id} booking={b} onTrack={() => b.trip && go({ name: 'track', tripId: b.trip.id })} />
+            <BookingRow
+              key={b.id}
+              booking={b}
+              onTrack={() => b.trip && go({ name: 'track', tripId: b.trip.id })}
+              onCancelled={() => lookup()}
+            />
           ))}
         </div>
       )}
@@ -1746,17 +1791,59 @@ function MyBookingsView({ go }: { go: (v: View) => void }) {
   )
 }
 
-function BookingRow({ booking, onTrack }: { booking: Booking; onTrack: () => void }) {
+function BookingRow({ booking, onTrack, onCancelled }: {
+  booking: Booking
+  onTrack: () => void
+  onCancelled?: (id: string) => void
+}) {
   const paid = booking.paymentStatus === 'PAID'
+  const cancelled = booking.status === 'CANCELLED'
+  const refunded = booking.paymentStatus === 'REFUNDED'
+  const [showQr, setShowQr] = React.useState(false)
+  const [cancelling, setCancelling] = React.useState(false)
+  const [confirmOpen, setConfirmOpen] = React.useState(false)
+  const [reason, setReason] = React.useState('')
+  const { toast } = useToast()
+
+  const handleCancel = async () => {
+    setCancelling(true)
+    try {
+      const res = await fetch(`/api/bookings/${booking.id}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: reason || 'Cancelled by passenger' }),
+      })
+      const j = await res.json()
+      if (res.ok) {
+        toast({
+          title: 'Booking cancelled',
+          description: j.message ?? 'Refund will be processed within 3-5 business days.',
+        })
+        setConfirmOpen(false)
+        onCancelled?.(booking.id)
+      } else {
+        toast({ title: 'Cancellation failed', description: j.error ?? 'Unknown error', variant: 'destructive' })
+      }
+    } finally {
+      setCancelling(false)
+    }
+  }
+
   return (
-    <Card>
+    <Card className={cancelled ? 'opacity-70' : ''}>
       <CardContent className="p-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <Badge variant={paid ? 'default' : 'destructive'} className={paid ? 'bg-primary text-primary-foreground' : ''}>
-                {paid ? 'PAID' : booking.paymentStatus}
-              </Badge>
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              {cancelled ? (
+                <Badge variant="destructive" className="bg-destructive text-white">CANCELLED</Badge>
+              ) : refunded ? (
+                <Badge variant="destructive">REFUNDED</Badge>
+              ) : paid ? (
+                <Badge className="bg-primary text-primary-foreground">PAID</Badge>
+              ) : (
+                <Badge variant="destructive">{booking.paymentStatus}</Badge>
+              )}
               <span className="text-xs text-muted-foreground font-mono">#{booking.id.slice(-8).toUpperCase()}</span>
             </div>
             <div className="font-semibold">
@@ -1769,19 +1856,102 @@ function BookingRow({ booking, onTrack }: { booking: Booking; onTrack: () => voi
               Seats: <span className="font-medium">{booking.seatNumbers}</span>
               {booking.boardingCounterName ? ` · Boarding: ${booking.boardingCounterName}` : ''}
             </div>
+            {cancelled && booking.cancelReason && (
+              <div className="text-xs mt-1 text-destructive">
+                Cancelled{booking.cancelledAt ? ` on ${formatDateTime(booking.cancelledAt)}` : ''}: {booking.cancelReason}
+              </div>
+            )}
+            {refunded && booking.refundRef && (
+              <div className="text-xs mt-1 text-muted-foreground">
+                Refund: ৳{booking.refundAmount} · ref {booking.refundRef}
+                {booking.refundedAt ? ` · processed ${formatDate(booking.refundedAt)}` : ''}
+              </div>
+            )}
           </div>
           <div className="flex flex-col items-end gap-2">
             <div className="text-right">
               <div className="text-lg font-bold text-primary">{formatBDT(booking.totalAmount)}</div>
               <div className="text-xs text-muted-foreground">{booking.paymentMethod ?? '—'}</div>
             </div>
-            {paid && booking.trip && (
-              <Button size="sm" variant="outline" onClick={onTrack}>
-                <Radio className="h-3.5 w-3.5" /> Track
-              </Button>
+            {!cancelled && (
+              <div className="flex flex-wrap gap-1.5 justify-end">
+                {paid && booking.trip && (
+                  <Button size="sm" variant="outline" onClick={onTrack}>
+                    <Radio className="h-3.5 w-3.5" /> Track
+                  </Button>
+                )}
+                {paid && (
+                  <Button size="sm" variant="outline" onClick={() => setShowQr((v) => !v)}>
+                    <QrCode className="h-3.5 w-3.5" /> {showQr ? 'Hide' : 'QR'}
+                  </Button>
+                )}
+                {paid && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-destructive hover:bg-destructive/10"
+                    onClick={() => setConfirmOpen(true)}
+                  >
+                    <Ban className="h-3.5 w-3.5" /> Cancel
+                  </Button>
+                )}
+              </div>
             )}
           </div>
         </div>
+
+        {showQr && paid && (
+          <div className="mt-4 pt-4 border-t flex flex-col sm:flex-row items-center gap-4">
+            <img
+              src={`/api/bookings/${booking.id}/qrcode`}
+              alt={`QR boarding pass for booking ${booking.id.slice(-8).toUpperCase()}`}
+              className="w-32 h-32 rounded-lg border bg-white p-1"
+            />
+            <div className="text-sm space-y-1">
+              <div className="font-semibold flex items-center gap-1.5">
+                <QrCode className="h-4 w-4 text-primary" /> Boarding pass
+              </div>
+              <div className="text-muted-foreground">
+                Show this QR code to the conductor at the boarding counter.
+                It encodes your booking ID, seats, route, and payment reference.
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Booking ID: <span className="font-mono font-medium">{booking.id.slice(-8).toUpperCase()}</span>
+                {' · '}Ref: <span className="font-mono">{booking.paymentRef ?? '—'}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Cancel this booking?</DialogTitle>
+              <DialogDescription>
+                Cancellation releases your seats immediately so other passengers can book them.
+                A full refund of <span className="font-semibold text-foreground">{formatBDT(booking.totalAmount)}</span> will be initiated to your original payment method.
+                Refunds typically take 3–5 business days to appear.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-1.5">
+              <Label htmlFor="cancel-reason">Reason (optional)</Label>
+              <Textarea
+                id="cancel-reason"
+                rows={2}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="e.g., change of plan, schedule conflict"
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={cancelling}>Keep booking</Button>
+              <Button variant="destructive" onClick={handleCancel} disabled={cancelling}>
+                {cancelling ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Ban className="h-4 w-4 mr-1" />}
+                Cancel & refund
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   )
@@ -1806,12 +1976,14 @@ function AdminView({ go }: { go: (v: View) => void }) {
           <TabsTrigger value="routes"><RouteIcon className="h-4 w-4 mr-1" /> Routes</TabsTrigger>
           <TabsTrigger value="buses"><BusIcon className="h-4 w-4 mr-1" /> Buses</TabsTrigger>
           <TabsTrigger value="tracking"><Navigation className="h-4 w-4 mr-1" /> Live tracking</TabsTrigger>
+          <TabsTrigger value="notifications"><Bell className="h-4 w-4 mr-1" /> Notifications</TabsTrigger>
         </TabsList>
         <TabsContent value="dashboard" className="mt-4"><AdminDashboard /></TabsContent>
         <TabsContent value="trips" className="mt-4"><AdminTrips /></TabsContent>
         <TabsContent value="routes" className="mt-4"><AdminRoutes /></TabsContent>
         <TabsContent value="buses" className="mt-4"><AdminBuses /></TabsContent>
         <TabsContent value="tracking" className="mt-4"><AdminTracking go={go} /></TabsContent>
+        <TabsContent value="notifications" className="mt-4"><AdminNotifications /></TabsContent>
       </Tabs>
     </div>
   )
@@ -2353,27 +2525,99 @@ function AdminBuses() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {buses.map((b) => (
-            <Card key={b.id}>
-              <CardContent className="p-5">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                    <BusIcon className="h-5 w-5" />
-                  </div>
-                  <Badge variant="secondary">{b.type}</Badge>
-                </div>
-                <div className="font-semibold">{b.name}</div>
-                <div className="text-xs text-muted-foreground">{b.plateNumber} · {b.totalSeats} seats</div>
-                {b.driverName && (
-                  <div className="text-xs text-muted-foreground mt-2">
-                    Driver: {b.driverName} {b.driverPhone ? `· ${b.driverPhone}` : ''}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <BusCard key={b.id} bus={b} onChanged={load} />
           ))}
         </div>
       )}
     </div>
+  )
+}
+
+function BusCard({ bus, onChanged }: { bus: Bus & { gpsDeviceToken?: string | null }; onChanged: () => void }) {
+  const { toast } = useToast()
+  const [busy, setBusy] = React.useState(false)
+  const [copied, setCopied] = React.useState(false)
+
+  const generateToken = async () => {
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/admin/buses/${bus.id}/gps-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      if (res.ok) {
+        toast({ title: 'GPS device token generated', description: 'Configure the GPS device (or driver app) with this token.' })
+        onChanged()
+      } else {
+        const j = await res.json().catch(() => ({}))
+        toast({ title: 'Failed', description: j.error ?? 'Unknown error', variant: 'destructive' })
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const copyToken = async () => {
+    if (!bus.gpsDeviceToken) return
+    try {
+      await navigator.clipboard.writeText(bus.gpsDeviceToken)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      toast({ title: 'Could not copy', variant: 'destructive' })
+    }
+  }
+
+  return (
+    <Card>
+      <CardContent className="p-5">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <BusIcon className="h-5 w-5" />
+          </div>
+          <Badge variant="secondary">{bus.type}</Badge>
+        </div>
+        <div className="font-semibold">{bus.name}</div>
+        <div className="text-xs text-muted-foreground">{bus.plateNumber} · {bus.totalSeats} seats</div>
+        {bus.driverName && (
+          <div className="text-xs text-muted-foreground mt-2">
+            Driver: {bus.driverName} {bus.driverPhone ? `· ${bus.driverPhone}` : ''}
+          </div>
+        )}
+        <Separator className="my-3" />
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium flex items-center gap-1.5">
+              <Cpu className="h-3.5 w-3.5 text-primary" /> GPS device
+            </span>
+            {bus.gpsDeviceToken ? (
+              <Badge className="bg-primary/10 text-primary border border-primary/30">Connected</Badge>
+            ) : (
+              <Badge variant="outline">Not set</Badge>
+            )}
+          </div>
+          {bus.gpsDeviceToken ? (
+            <div className="flex items-center gap-1.5">
+              <code className="flex-1 text-[11px] bg-muted px-2 py-1 rounded font-mono truncate" title={bus.gpsDeviceToken}>
+                {bus.gpsDeviceToken}
+              </code>
+              <Button size="sm" variant="ghost" className="h-7 px-2" onClick={copyToken} title="Copy token">
+                {copied ? <CheckCircle2 className="h-3.5 w-3.5 text-primary" /> : <KeySquare className="h-3.5 w-3.5" />}
+              </Button>
+              <Button size="sm" variant="ghost" className="h-7 px-2" onClick={generateToken} disabled={busy} title="Regenerate token">
+                <RotateCcw className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          ) : (
+            <Button size="sm" variant="outline" className="w-full" onClick={generateToken} disabled={busy}>
+              {busy ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Plus className="h-3.5 w-3.5 mr-1" />}
+              Generate GPS token
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -2452,6 +2696,31 @@ function AdminTracking({ go }: { go: (v: View) => void }) {
     })
     setAdvancing(false)
     if (res.ok) toast({ title: `Bus position set to ${progressInput}%` })
+  }
+
+  const handleGpsSim = async () => {
+    if (!activeTrip?.bus) return
+    setAdvancing(true)
+    try {
+      const res = await fetch('/api/admin/gps-sim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ busId: activeTrip.bus.id, steps: 4, delayMs: 600 }),
+      })
+      const j = await res.json()
+      if (res.ok) {
+        toast({
+          title: 'GPS simulation ran',
+          description: `Pushed ${j.stepsTaken} position update${j.stepsTaken === 1 ? '' : 's'} from ${j.startingCounterName}.`,
+        })
+        // Reload the latest location for the active trip.
+        load()
+      } else {
+        toast({ title: 'GPS simulation failed', description: j.error ?? 'Unknown error', variant: 'destructive' })
+      }
+    } finally {
+      setAdvancing(false)
+    }
   }
 
   if (loading) return <Card className="h-96 animate-pulse bg-muted/40" />
@@ -2562,9 +2831,14 @@ function AdminTracking({ go }: { go: (v: View) => void }) {
                       {advancing ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <ArrowRight className="h-4 w-4 mr-1" />}
                       Advance to next counter
                     </Button>
+                    <Button onClick={handleGpsSim} disabled={advancing} variant="outline">
+                      {advancing ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Cpu className="h-4 w-4 mr-1" />}
+                      Simulate GPS device (auto-drive)
+                    </Button>
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">
-                    Each click moves the bus to the next stop on the route, updates its ETA, and notifies all passengers currently tracking this bus.
+                    <b>Advance to next counter</b> moves the bus one stop forward — useful for manual updates from the dispatcher.
+                    <b>Simulate GPS device</b> emulates a real GPS hardware push: it walks the bus several steps along the route using the same endpoint (<code>/api/gps/push</code>) a real tracker would call. In production, real GPS hardware would push positions every few seconds without any manual action.
                   </p>
                 </div>
 
@@ -2583,6 +2857,155 @@ function AdminTracking({ go }: { go: (v: View) => void }) {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// ---- Admin: notifications log ----
+function AdminNotifications() {
+  const [notifications, setNotifications] = React.useState<Notification[]>([])
+  const [loading, setLoading] = React.useState(true)
+  const [channel, setChannel] = React.useState<'ALL' | 'SMS' | 'EMAIL'>('ALL')
+  const [type, setType] = React.useState<'ALL' | 'BOOKING_CONFIRMATION' | 'DEPARTURE_REMINDER' | 'DELAY_ALERT' | 'REFUND_NOTICE'>('ALL')
+
+  const load = React.useCallback(() => {
+    setLoading(true)
+    const params = new URLSearchParams()
+    if (channel !== 'ALL') params.set('channel', channel)
+    if (type !== 'ALL') params.set('type', type)
+    params.set('limit', '100')
+    fetch(`/api/admin/notifications?${params.toString()}`)
+      .then((r) => r.json())
+      .then((data) => setNotifications(data as Notification[]))
+      .finally(() => setLoading(false))
+  }, [channel, type])
+
+  React.useEffect(() => { load() }, [load])
+
+  const sent = notifications.filter((n) => n.status === 'SENT').length
+  const failed = notifications.filter((n) => n.status === 'FAILED').length
+  const smsCount = notifications.filter((n) => n.channel === 'SMS').length
+  const emailCount = notifications.filter((n) => n.channel === 'EMAIL').length
+
+  return (
+    <div className="space-y-4">
+      {/* KPI strip */}
+      <div className="grid gap-3 sm:grid-cols-4">
+        <Card><CardContent className="p-4">
+          <div className="text-xs uppercase text-muted-foreground tracking-wide">Total</div>
+          <div className="text-2xl font-bold">{notifications.length}</div>
+        </CardContent></Card>
+        <Card><CardContent className="p-4">
+          <div className="text-xs uppercase text-muted-foreground tracking-wide">Sent</div>
+          <div className="text-2xl font-bold text-primary">{sent}</div>
+        </CardContent></Card>
+        <Card><CardContent className="p-4">
+          <div className="text-xs uppercase text-muted-foreground tracking-wide">Failed</div>
+          <div className="text-2xl font-bold text-destructive">{failed}</div>
+        </CardContent></Card>
+        <Card><CardContent className="p-4">
+          <div className="text-xs uppercase text-muted-foreground tracking-wide">SMS / Email</div>
+          <div className="text-2xl font-bold">{smsCount} / {emailCount}</div>
+        </CardContent></Card>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-sm font-medium">Filter:</span>
+        <Select value={channel} onValueChange={(v) => setChannel(v as typeof channel)}>
+          <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">All channels</SelectItem>
+            <SelectItem value="SMS">SMS only</SelectItem>
+            <SelectItem value="EMAIL">Email only</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={type} onValueChange={(v) => setType(v as typeof type)}>
+          <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">All types</SelectItem>
+            <SelectItem value="BOOKING_CONFIRMATION">Booking confirmation</SelectItem>
+            <SelectItem value="DEPARTURE_REMINDER">Departure reminder</SelectItem>
+            <SelectItem value="DELAY_ALERT">Delay alert</SelectItem>
+            <SelectItem value="REFUND_NOTICE">Refund notice</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+          {loading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RotateCcw className="h-4 w-4 mr-1" />}
+          Refresh
+        </Button>
+      </div>
+
+      {/* Table */}
+      {loading ? (
+        <Card className="h-64 animate-pulse bg-muted/40" />
+      ) : notifications.length === 0 ? (
+        <Card>
+          <CardContent className="p-12 text-center text-muted-foreground">
+            <Bell className="h-10 w-10 mx-auto mb-3 opacity-50" />
+            No notifications sent yet. They appear here automatically when passengers book, cancel, or when trips are delayed.
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardContent className="p-0">
+            <div className="max-h-[560px] overflow-y-auto scroll-thin">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-24">Channel</TableHead>
+                    <TableHead className="w-44">Type</TableHead>
+                    <TableHead>Recipient</TableHead>
+                    <TableHead className="w-24">Status</TableHead>
+                    <TableHead className="w-40">Sent</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {notifications.map((n) => (
+                    <TableRow key={n.id}>
+                      <TableCell>
+                        <span className="inline-flex items-center gap-1.5 text-xs font-medium">
+                          {n.channel === 'SMS' ? <><Phone className="h-3 w-3" /> SMS</> : <><Mail className="h-3 w-3" /> Email</>}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-xs">{n.type.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())}</TableCell>
+                      <TableCell className="text-xs font-mono truncate max-w-[200px]">{n.recipient}</TableCell>
+                      <TableCell>
+                        {n.status === 'SENT' ? (
+                          <Badge className="bg-primary/10 text-primary border border-primary/30 text-[10px]">SENT</Badge>
+                        ) : n.status === 'FAILED' ? (
+                          <Badge variant="destructive" className="text-[10px]">FAILED</Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[10px]">PENDING</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {n.sentAt ? formatDateTime(n.sentAt) : '—'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card className="bg-muted/30">
+        <CardContent className="p-4 text-xs text-muted-foreground">
+          <div className="flex items-start gap-2">
+            <Send className="h-4 w-4 mt-0.5 flex-shrink-0" />
+            <div>
+              <span className="font-medium text-foreground">How notifications are triggered:</span>{' '}
+              Booking confirmation SMS + email fire automatically on successful payment.
+              Departure reminders send 1 hour before departure (configure via cron).
+              Delay alerts fire when a trip's ETA slips by more than 15 minutes.
+              Refund notices fire on booking cancellation.
+              All sends are logged here for audit.
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }
