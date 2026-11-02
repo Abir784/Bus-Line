@@ -5,39 +5,7 @@
 // (the user-facing tracking page) get a live update.
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { io as ioClient } from 'socket.io-client'
-
-async function broadcast(payload: Record<string, unknown>) {
-  try {
-    // Server-side: connect directly to the tracking service on its own port.
-    // (Caddy gateway is for browser clients only.) The tracking service uses
-    // socket.io with path: '/', so the client must match.
-    const sock = ioClient('http://localhost:3003', {
-      transports: ['websocket'],
-      reconnection: false,
-      timeout: 3000,
-      forceNew: true,
-      path: '/',
-    })
-    await new Promise<void>((resolve) => {
-      sock.on('connect', () => {
-        sock.emit('update-location', payload)
-        // Give the emit a tick to flush before disconnecting.
-        setTimeout(() => {
-          sock.disconnect()
-          resolve()
-        }, 100)
-      })
-      sock.on('connect_error', (err: unknown) => {
-        console.error('[bus-location] ws connect_error:', err)
-        resolve()
-      })
-      setTimeout(() => resolve(), 3000)
-    })
-  } catch (e) {
-    console.error('[bus-location] broadcast failed:', e)
-  }
-}
+import { broadcastLocation } from '@/lib/tracking'
 
 function lerp(a: number, b: number, t: number) {
   return a + (b - a) * Math.max(0, Math.min(1, t))
@@ -187,7 +155,7 @@ export async function POST(req: NextRequest) {
   })
 
   // Broadcast to WebSocket subscribers.
-  await broadcast(payload)
+  await broadcastLocation(payload)
 
   return NextResponse.json({ ok: true, location: created })
 }

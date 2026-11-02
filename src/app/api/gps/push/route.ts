@@ -13,7 +13,7 @@
 // service so all passengers currently tracking this bus get a live update.
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { io as ioClient } from 'socket.io-client'
+import { broadcastLocation } from '@/lib/tracking'
 
 interface Counter {
   id: string
@@ -79,34 +79,6 @@ function projectOntoRoute(lat: number, lng: number, counters: Counter[]): {
   // Overall progress: (bestSeg + bestT) / (count - 1) * 100
   const progressPct = ((bestSeg + bestT) / (counters.length - 1)) * 100
   return { currentIdx, nextIdx, progressPct, distanceFromRouteM: bestDist }
-}
-
-async function broadcast(payload: Record<string, unknown>) {
-  try {
-    const sock = ioClient('http://localhost:3003', {
-      transports: ['websocket'],
-      reconnection: false,
-      timeout: 3000,
-      forceNew: true,
-      path: '/',
-    })
-    await new Promise<void>((resolve) => {
-      sock.on('connect', () => {
-        sock.emit('update-location', payload)
-        setTimeout(() => {
-          sock.disconnect()
-          resolve()
-        }, 100)
-      })
-      sock.on('connect_error', (err: unknown) => {
-        console.error('[gps-push] ws connect_error:', err)
-        resolve()
-      })
-      setTimeout(() => resolve(), 3000)
-    })
-  } catch (e) {
-    console.error('[gps-push] broadcast failed:', e)
-  }
 }
 
 export async function POST(req: NextRequest) {
@@ -204,7 +176,7 @@ export async function POST(req: NextRequest) {
     },
   })
 
-  await broadcast(payload)
+  await broadcastLocation(payload)
 
   return NextResponse.json({
     ok: true,

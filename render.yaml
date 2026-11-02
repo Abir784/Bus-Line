@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: busline-tracking
+    runtime: node
+    rootDir: mini-services/tracking-service
+    buildCommand: bun install
+    startCommand: bun index.ts
+    healthCheckPath: /health
+    envVars:
+      - key: CORS_ORIGIN
+        value: "*"

@@ -5,6 +5,7 @@
 
 import * as React from 'react'
 import { io } from 'socket.io-client'
+import { TRACKING_CLIENT_URL, TRACKING_PATH } from '@/lib/tracking'
 import { useToast } from '@/hooks/use-toast'
 import {
   Bus as BusIcon,
@@ -1459,11 +1460,11 @@ function TrackView({ tripId, go }: { tripId?: string; go: (v: View) => void }) {
 
   // WebSocket subscription — receives live bus location updates from the tracking service.
   React.useEffect(() => {
-    const sock = io('/?XTransformPort=3003', {
+    const sock = io(TRACKING_CLIENT_URL, {
       transports: ['polling', 'websocket'],
       reconnection: true,
       reconnectionAttempts: 5,
-      path: '/',
+      path: TRACKING_PATH,
     })
     sock.on('connect', () => {
       sock.emit('subscribe', {})
@@ -2649,10 +2650,10 @@ function AdminTracking({ go }: { go: (v: View) => void }) {
   React.useEffect(() => { load() }, [load])
 
   React.useEffect(() => {
-    const sock = io('/?XTransformPort=3003', {
+    const sock = io(TRACKING_CLIENT_URL, {
       transports: ['polling', 'websocket'],
       reconnection: true,
-      path: '/',
+      path: TRACKING_PATH,
     })
     sock.on('connect', () => sock.emit('subscribe', {}))
     sock.on('location-update', (loc: BusLocation) => {

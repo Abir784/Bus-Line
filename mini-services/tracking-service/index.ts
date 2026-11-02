@@ -26,10 +26,25 @@ interface BusLocationPayload {
   lastUpdated: string
 }
 
-const httpServer = createServer()
+const IO_PATH = process.env.SOCKET_IO_PATH || '/socket.io'
+
+const httpServer = createServer((req, res) => {
+  // Health check endpoint for Render / load balancers.
+  if (req.url === '/health' || req.url === '/healthz' || req.url === '/') {
+    res.writeHead(200, { 'Content-Type': 'text/plain' })
+    res.end('ok')
+    return
+  }
+  res.writeHead(404, { 'Content-Type': 'text/plain' })
+  res.end('not found')
+})
+
 const io = new Server(httpServer, {
-  path: '/',
-  cors: { origin: '*', methods: ['GET', 'POST'] },
+  path: IO_PATH,
+  cors: {
+    origin: process.env.CORS_ORIGIN || '*',
+    methods: ['GET', 'POST'],
+  },
   pingTimeout: 60000,
   pingInterval: 25000,
 })
@@ -87,9 +102,9 @@ io.on('connection', (socket: Socket) => {
   })
 })
 
-const PORT = 3003
+const PORT = Number(process.env.PORT) || 3003
 httpServer.listen(PORT, () => {
-  console.log(`[tracking] WebSocket service running on port ${PORT}`)
+  console.log(`[tracking] WebSocket service running on port ${PORT} (path ${IO_PATH})`)
 })
 
 process.on('SIGTERM', () => {

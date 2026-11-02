@@ -178,7 +178,7 @@ Here are all the generated files.
                                    │ Prisma                   │
                                    ▼                          │
                           ┌─────────────────┐                 │
-                          │   SQLite DB     │                 │
+                          │  Neon Postgres  │                 │
                           │  (Prisma ORM)   │                 │
                           └─────────────────┘                 │
                                                               │
@@ -204,7 +204,7 @@ Here are all the generated files.
 
 - **Single-page app** — All passenger and owner views live in `src/app/page.tsx` with view-switching state. The Next.js route is only `/` (per sandbox constraints).
 - **WebSocket for real-time** — Socket.IO mini-service on port 3003 broadcasts bus positions. The Caddy gateway routes browser connections via `?XTransformPort=3003`.
-- **Prisma + SQLite** — Zero-config database, perfect for demos. Swap to PostgreSQL for production by changing the `DATABASE_URL`.
+- **Prisma + Neon Postgres** — Production database on Neon. Set `DATABASE_URL` to your Neon connection string.
 - **Simulated gateway** — Payment, SMS, and email are all simulated (with realistic 3-5% failure rates) so the app is fully functional out of the box. Swap in real providers in `src/lib/notifications.ts` and `src/app/api/payment/route.ts`.
 
 ---
@@ -354,7 +354,7 @@ bun install
 
 # 3. Set up the database
 cp .env.example .env   # or just ensure DATABASE_URL is set
-bun run db:push        # creates the SQLite database + tables
+bun run db:push        # syncs schema to Neon Postgres
 bun run db:generate    # generates the Prisma client
 
 # 4. Seed with sample data (3 routes, 4 buses, 6 trips, 3 bookings)
@@ -600,7 +600,7 @@ BusLine uses a custom **emerald + amber "highway" palette** — no indigo/blue, 
 - [ ] **Native mobile apps** — iOS + Android (React Native or Expo)
 - [ ] **Analytics module** — revenue trends, route performance, no-show tracking
 - [ ] **NextAuth.js authentication** — real owner login with role-based access
-- [ ] **PostgreSQL migration** — swap SQLite for production Postgres
+- [x] **PostgreSQL migration** — Neon Postgres in production
 - [ ] **Multi-tenant / white-label** — multiple operators on one deployment
 
 ---
@@ -612,7 +612,7 @@ BusLine uses a custom **emerald + amber "highway" palette** — no indigo/blue, 
 | **Framework** | [Next.js 16](https://nextjs.org/) (App Router) | React 19, RSC, API routes in one app |
 | **Language** | [TypeScript 5](https://www.typescriptlang.org/) | Type safety end-to-end |
 | **Styling** | [Tailwind CSS 4](https://tailwindcss.com/) + [shadcn/ui](https://ui.shadcn.com/) | Rapid, consistent, themeable |
-| **Database** | [Prisma ORM](https://www.prisma.io/) + SQLite | Zero-config, type-safe queries |
+| **Database** | [Prisma ORM](https://www.prisma.io/) + Neon Postgres | Type-safe queries, serverless Postgres |
 | **Real-time** | [Socket.IO](https://socket.io/) | WebSocket with auto-reconnect, rooms |
 | **State** | React hooks + TanStack Query | Server state caching, optimistic updates |
 | **Forms** | [react-hook-form](https://react-hook-form.com/) + [zod](https://zod.dev/) | Type-safe validation |
